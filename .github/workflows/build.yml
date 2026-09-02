@@ -1,0 +1,61 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract ZIP file (if present)
+        run: |
+          $zipFile = Get-ChildItem -Filter "*.zip" | Select-Object -First 1
+          if ($zipFile) {
+            Write-Host "Extracting $($zipFile.Name) ..."
+            Expand-Archive -Path $zipFile.FullName -DestinationPath "extracted"
+            $items = Get-ChildItem "extracted"
+            if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+              Write-Host "Moving contents from $($items[0].Name) to root..."
+              Copy-Item -Recurse "$($items[0].FullName)\*" "."
+            } else {
+              Write-Host "Copying all extracted files to root..."
+              Copy-Item -Recurse "extracted\*" "."
+            }
+            Remove-Item -Recurse "extracted"
+            if (Test-Path "pubspec.yaml") {
+              Write-Host "✅ pubspec.yaml found - ready to build."
+            } else {
+              Write-Host "❌ pubspec.yaml NOT found. Please check your ZIP file."
+              exit 1
+            }
+          } else {
+            Write-Host "No ZIP file found. Assuming files are already extracted."
+          }
+        shell: powershell
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+
+      - name: Enable Windows Desktop Support
+        run: flutter config --enable-windows-desktop
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build Windows EXE (Release)
+        run: flutter build windows --release
+
+      - name: Upload Artifact (EXE + DLLs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: moon-pos-windows
+          path: build/windows/x64/runner/Release/
