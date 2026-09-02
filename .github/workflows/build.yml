@@ -3,35 +3,65 @@ name: Build Windows EXE
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:    # یہ آپ کو Manual Run کا بٹن دے گا
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      # 🔽 سب سے اہم مرحلہ: ZIP کو Extract کریں
-      - name: Extract ZIP file
+      - name: Extract ZIP file (if present)
         run: |
-          if (Test-Path "*.zip") {
-            Expand-Archive -Path "*.zip" -DestinationPath "extracted"
-            Copy-Item -Recurse "extracted/*" "."
+          # Find the first ZIP file in the root
+          $zipFile = Get-ChildItem -Filter "*.zip" | Select-Object -First 1
+          if ($zipFile) {
+            Write-Host "Extracting $($zipFile.Name) ..."
+            Expand-Archive -Path $zipFile.FullName -DestinationPath "extracted"
+            
+            # Check if extracted folder contains a single subfolder
+            $items = Get-ChildItem "extracted"
+            if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+              Write-Host "Moving contents from $($items[0].Name) to root..."
+              Copy-Item -Recurse "$($items[0].FullName)\*" "."
+            } else {
+              Write-Host "Copying all extracted files to root..."
+              Copy-Item -Recurse "extracted\*" "."
+            }
+            
             Remove-Item -Recurse "extracted"
+            
+            # Verify pubspec.yaml exists
+            if (Test-Path "pubspec.yaml") {
+              Write-Host "✅ pubspec.yaml found - ready to build."
+            } else {
+              Write-Host "❌ pubspec.yaml NOT found. Please check your ZIP file."
+              exit 1
+            }
+          } else {
+            Write-Host "No ZIP file found. Assuming files are already extracted."
           }
         shell: powershell
 
-      - uses: subosito/flutter-action@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.0'
           channel: 'stable'
 
-      - run: flutter config --enable-windows-desktop
-      - run: flutter pub get
-      - run: flutter build windows --release
+      - name: Enable Windows Desktop Support
+        run: flutter config --enable-windows-desktop
 
-      - uses: actions/upload-artifact@v4
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build Windows EXE (Release)
+        run: flutter build windows --release
+
+      - name: Upload Artifact (EXE + DLLs)
+        uses: actions/upload-artifact@v4
         with:
           name: moon-pos-windows
           path: build/windows/x64/runner/Release/
