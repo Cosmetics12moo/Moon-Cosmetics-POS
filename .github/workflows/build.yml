@@ -1,0 +1,37 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:    # یہ آپ کو Manual Run کا بٹن دے گا
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 🔽 سب سے اہم مرحلہ: ZIP کو Extract کریں
+      - name: Extract ZIP file
+        run: |
+          if (Test-Path "*.zip") {
+            Expand-Archive -Path "*.zip" -DestinationPath "extracted"
+            Copy-Item -Recurse "extracted/*" "."
+            Remove-Item -Recurse "extracted"
+          }
+        shell: powershell
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+          channel: 'stable'
+
+      - run: flutter config --enable-windows-desktop
+      - run: flutter pub get
+      - run: flutter build windows --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moon-pos-windows
+          path: build/windows/x64/runner/Release/
