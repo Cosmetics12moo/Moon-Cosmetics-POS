@@ -1,0 +1,251 @@
+name: Moon Cosmetics POS — Windows EXE Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+  pull_request:
+    branches:
+      - main
+      - master
+
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Moon Cosmetics POS for Windows
+    runs-on: windows-latest
+
+    steps:
+
+      # ============================================
+      # 1. Checkout source code
+      # ============================================
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ============================================
+      # 2. Setup Flutter
+      # ============================================
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+
+      # ============================================
+      # 3. Show Flutter / Dart versions
+      # ============================================
+      - name: Flutter Version
+        run: flutter --version
+
+      # ============================================
+      # 4. Enable Windows Desktop
+      # ============================================
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      # ============================================
+      # 5. Verify project structure
+      # ============================================
+      - name: Verify Project Structure
+        shell: pwsh
+        run: |
+          Write-Host "Checking Moon Cosmetics POS project..."
+
+          if (!(Test-Path "pubspec.yaml")) {
+            Write-Error "ERROR: pubspec.yaml not found."
+            exit 1
+          }
+
+          if (!(Test-Path "lib\main.dart")) {
+            Write-Error "ERROR: lib/main.dart not found."
+            exit 1
+          }
+
+          if (!(Test-Path "lib\app.dart")) {
+            Write-Error "ERROR: lib/app.dart not found."
+            exit 1
+          }
+
+          if (!(Test-Path "lib\core\db.dart")) {
+            Write-Error "ERROR: lib/core/db.dart not found."
+            exit 1
+          }
+
+          if (!(Test-Path "lib\models\product.dart")) {
+            Write-Error "ERROR: lib/models/product.dart not found."
+            exit 1
+          }
+
+          if (!(Test-Path "lib\screens\dashboard.dart")) {
+            Write-Error "ERROR: lib/screens/dashboard.dart not found."
+            exit 1
+          }
+
+          if (!(Test-Path "lib\screens\pos.dart")) {
+            Write-Error "ERROR: lib/screens/pos.dart not found."
+            exit 1
+          }
+
+          if (!(Test-Path "lib\screens\products.dart")) {
+            Write-Error "ERROR: lib/screens/products.dart not found."
+            exit 1
+          }
+
+          if (!(Test-Path "lib\screens\categories.dart")) {
+            Write-Error "ERROR: lib/screens/categories.dart not found."
+            exit 1
+          }
+
+          if (!(Test-Path "lib\screens\purchases.dart")) {
+            Write-Error "ERROR: lib/screens/purchases.dart not found."
+            exit 1
+          }
+
+          if (!(Test-Path "lib\screens\reports.dart")) {
+            Write-Error "ERROR: lib/screens/reports.dart not found."
+            exit 1
+          }
+
+          if (!(Test-Path "lib\screens\settings.dart")) {
+            Write-Error "ERROR: lib/screens/settings.dart not found."
+            exit 1
+          }
+
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "Project structure verified successfully."
+          Write-Host "=========================================="
+
+      # ============================================
+      # 6. Generate Windows platform files
+      # ============================================
+      - name: Prepare Windows Platform
+        shell: pwsh
+        run: |
+          if (!(Test-Path "windows")) {
+            Write-Host "Windows platform files not found."
+            Write-Host "Generating Windows platform..."
+
+            flutter create `
+              --platforms=windows `
+              --project-name moon_cosmetics_pos `
+              .
+
+            Write-Host "Windows platform generated successfully."
+          }
+          else {
+            Write-Host "Windows platform files already exist."
+          }
+
+      # ============================================
+      # 7. Get dependencies
+      # ============================================
+      - name: Flutter Pub Get
+        run: flutter pub get
+
+      # ============================================
+      # 8. Analyze project
+      # ============================================
+      - name: Flutter Analyze
+        run: flutter analyze
+
+      # ============================================
+      # 9. Run tests
+      # ============================================
+      - name: Flutter Test
+        run: flutter test
+
+      # ============================================
+      # 10. Build Windows Release
+      # ============================================
+      - name: Build Windows Release
+        run: flutter build windows --release
+
+      # ============================================
+      # 11. Verify EXE
+      # ============================================
+      - name: Verify Windows EXE
+        shell: pwsh
+        run: |
+          $releasePath = "build\windows\x64\runner\Release"
+
+          if (!(Test-Path $releasePath)) {
+            Write-Error "ERROR: Windows Release folder was not created."
+            exit 1
+          }
+
+          $exeFiles = Get-ChildItem `
+            -Path $releasePath `
+            -Filter "*.exe" `
+            -Recurse
+
+          if ($exeFiles.Count -eq 0) {
+            Write-Error "ERROR: No EXE file was found."
+            exit 1
+          }
+
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "Windows EXE successfully created!"
+          Write-Host "=========================================="
+
+          foreach ($exe in $exeFiles) {
+            Write-Host $exe.FullName
+          }
+
+      # ============================================
+      # 12. Package complete Windows application
+      # ============================================
+      - name: Package Windows Application
+        shell: pwsh
+        run: |
+          $releasePath = "build\windows\x64\runner\Release"
+          $zipPath = "Moon_Cosmetics_POS_Windows_Release.zip"
+
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+
+          Compress-Archive `
+            -Path "$releasePath\*" `
+            -DestinationPath $zipPath `
+            -CompressionLevel Optimal
+
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "Windows application ZIP created."
+          Write-Host "=========================================="
+
+      # ============================================
+      # 13. Upload Windows build artifact
+      # ============================================
+      - name: Upload Windows EXE Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moon_Cosmetics_POS_Windows
+          path: Moon_Cosmetics_POS_Windows_Release.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      # ============================================
+      # 14. Build summary
+      # ============================================
+      - name: Build Summary
+        shell: pwsh
+        run: |
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host " MOON COSMETICS & BEAUTY SHOP"
+          Write-Host " Windows POS Build Completed"
+          Write-Host "=========================================="
+          Write-Host ""
+          Write-Host "Artifact:"
+          Write-Host "Moon_Cosmetics_POS_Windows"
+          Write-Host ""
+          Write-Host "Download the ZIP from:"
+          Write-Host "Actions -> This Workflow Run -> Artifacts"
