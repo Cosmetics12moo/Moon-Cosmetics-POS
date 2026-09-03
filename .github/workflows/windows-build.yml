@@ -1,0 +1,144 @@
+name: Moon Cosmetics POS - Windows Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+  pull_request:
+    branches:
+      - main
+      - master
+
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows EXE
+    runs-on: windows-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+
+      - name: Flutter Version
+        run: flutter --version
+
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Check Project Structure
+        shell: pwsh
+        run: |
+          Write-Host "Checking project structure..."
+
+          if (!(Test-Path "pubspec.yaml")) {
+            Write-Error "pubspec.yaml not found!"
+            exit 1
+          }
+
+          if (!(Test-Path "lib\main.dart")) {
+            Write-Error "lib/main.dart not found!"
+            exit 1
+          }
+
+          if (!(Test-Path "lib\core\db.dart")) {
+            Write-Error "lib/core/db.dart not found!"
+            exit 1
+          }
+
+          if (!(Test-Path "lib\models\product.dart")) {
+            Write-Error "lib/models/product.dart not found!"
+            exit 1
+          }
+
+          if (!(Test-Path "lib\screens\dashboard.dart")) {
+            Write-Error "lib/screens/dashboard.dart not found!"
+            exit 1
+          }
+
+          Write-Host "Project structure OK."
+
+      - name: Generate Windows Platform
+        shell: pwsh
+        run: |
+          if (!(Test-Path "windows")) {
+            Write-Host "Windows platform files not found."
+            Write-Host "Generating Windows platform files..."
+
+            flutter create `
+              --platforms=windows `
+              --project-name moon_cosmetics_pos `
+              .
+
+            Write-Host "Windows platform generated successfully."
+          }
+          else {
+            Write-Host "Windows platform files already exist."
+          }
+
+      - name: Flutter Pub Get
+        run: flutter pub get
+
+      - name: Flutter Analyze
+        run: flutter analyze
+
+      - name: Flutter Test
+        run: flutter test
+
+      - name: Build Windows Release
+        run: flutter build windows --release
+
+      - name: Verify Windows Build
+        shell: pwsh
+        run: |
+          $releasePath = "build\windows\x64\runner\Release"
+
+          if (!(Test-Path $releasePath)) {
+            Write-Error "Windows Release directory was not created."
+            exit 1
+          }
+
+          $exe = Get-ChildItem $releasePath -Filter "*.exe" -Recurse
+
+          if ($exe.Count -eq 0) {
+            Write-Error "No Windows EXE was found."
+            exit 1
+          }
+
+          Write-Host "Windows EXE found:"
+          $exe | ForEach-Object {
+            Write-Host $_.FullName
+          }
+
+      - name: Package Windows Application
+        shell: pwsh
+        run: |
+          $releasePath = "build\windows\x64\runner\Release"
+          $zipPath = "Moon_Cosmetics_POS_Windows_Release.zip"
+
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+
+          Compress-Archive `
+            -Path "$releasePath\*" `
+            -DestinationPath $zipPath `
+            -CompressionLevel Optimal
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moon_Cosmetics_POS_Windows
+          path: Moon_Cosmetics_POS_Windows_Release.zip
+          if-no-files-found: error
+          retention-days: 30
