@@ -1,0 +1,95 @@
+name: Moon Cosmetics POS - Windows Build
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Extract source zip if present (safety net)
+        shell: pwsh
+        run: |
+          $zipFiles = Get-ChildItem -Filter "*.zip" -File
+          if (!(Test-Path "lib")) {
+            if ($zipFiles.Count -gt 0) {
+              foreach ($z in $zipFiles) {
+                Write-Host "lib/ not found. Extracting $($z.Name)..."
+                Expand-Archive -Path $z.FullName -DestinationPath "." -Force
+              }
+              Write-Host "Extraction complete."
+            } else {
+              Write-Host "lib/ not found and no zip file present."
+            }
+          } else {
+            Write-Host "lib/ already present, no extraction needed."
+          }
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Verify Flutter environment
+        shell: pwsh
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      - name: Enable Windows desktop
+        shell: pwsh
+        run: flutter config --enable-windows-desktop
+
+      - name: Generate Windows platform files
+        shell: pwsh
+        run: flutter create --platforms=windows --project-name=moon_cosmetics_pos .
+
+      - name: Verify app source is present
+        shell: pwsh
+        run: |
+          $mainContent = Get-Content lib/main.dart -Raw
+          if ($mainContent -notmatch "MoonCosmeticsApp") {
+            Write-Error "lib/main.dart does not contain MoonCosmeticsApp. The real app source is missing from this repo (only the default Flutter template is present). Push the complete lib/ folder before building."
+            exit 1
+          }
+          Write-Host "Verified: lib/main.dart contains the Moon Cosmetics POS app."
+
+      - name: Resolve dependencies
+        shell: pwsh
+        run: flutter pub get
+
+      - name: Static analysis
+        shell: pwsh
+        run: flutter analyze
+
+      - name: Run tests
+        shell: pwsh
+        run: flutter test
+
+      - name: Build Windows release
+        shell: pwsh
+        run: flutter build windows --release
+
+      - name: Package Windows application
+        shell: pwsh
+        run: |
+          if (Test-Path moon_cosmetics_pos_windows.zip) { Remove-Item moon_cosmetics_pos_windows.zip -Force }
+          Compress-Archive -Path 'build/windows/x64/runner/Release/*' -DestinationPath 'moon_cosmetics_pos_windows.zip' -Force
+
+      - name: Upload Windows ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: moon_cosmetics_pos-windows
+          path: moon_cosmetics_pos_windows.zip
+          if-no-files-found: error
+          retention-days: 30
