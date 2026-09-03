@@ -1,0 +1,243 @@
+name: Moon Cosmetics POS - Windows EXE Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+  pull_request:
+    branches:
+      - main
+      - master
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Moon Cosmetics POS for Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+
+      # 1. Checkout
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Flutter
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.2"
+          channel: stable
+          cache: true
+
+      # 3. Versions
+      - name: Show Flutter Version
+        shell: pwsh
+        run: |
+          flutter --version
+          dart --version
+
+      # 4. Windows Desktop
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      # 5. Verify project
+      - name: Verify Source Files
+        shell: pwsh
+        run: |
+          $required = @(
+            "pubspec.yaml",
+            "lib\main.dart",
+            "lib\app.dart",
+            "lib\core\db.dart",
+            "lib\models\product.dart",
+            "lib\screens\dashboard.dart",
+            "lib\screens\pos.dart",
+            "lib\screens\products.dart",
+            "lib\screens\categories.dart",
+            "lib\screens\purchases.dart",
+            "lib\screens\reports.dart",
+            "lib\screens\settings.dart"
+          )
+
+          $missing = @()
+
+          foreach ($file in $required) {
+            if (!(Test-Path $file)) {
+              $missing += $file
+            }
+          }
+
+          if ($missing.Count -gt 0) {
+            Write-Host "Missing required files:"
+            $missing | ForEach-Object {
+              Write-Host " - $_"
+            }
+            exit 1
+          }
+
+          Write-Host "All required source files are present."
+
+      # 6. Verify Dart package name
+      - name: Check Dart Package Name
+        shell: pwsh
+        run: |
+          $pubspec = Get-Content "pubspec.yaml" -Raw
+
+          if ($pubspec -notmatch '(?m)^name:\s*moon_cosmetics_pos\s*$') {
+            Write-Error "pubspec.yaml must contain: name: moon_cosmetics_pos"
+            exit 1
+          }
+
+          Write-Host "Dart package name is correct."
+
+      # 7. Generate Windows files
+      - name: Prepare Windows Platform
+        shell: pwsh
+        run: |
+          if (!(Test-Path "windows\CMakeLists.txt")) {
+
+            Write-Host "Generating Windows platform files..."
+
+            flutter create `
+              --platforms=windows `
+              --project-name moon_cosmetics_pos `
+              --no-pub `
+              .
+
+            if (!(Test-Path "windows\CMakeLists.txt")) {
+              Write-Error "Windows platform generation failed."
+              exit 1
+            }
+
+          } else {
+
+            Write-Host "Windows platform already exists."
+
+          }
+
+      # 8. Clean
+      - name: Flutter Clean
+        run: flutter clean
+
+      # 9. Dependencies
+      - name: Flutter Pub Get
+        run: flutter pub get
+
+      # 10. Verify dependencies
+      - name: Verify Dependencies
+        shell: pwsh
+        run: |
+          if (!(Test-Path "pubspec.lock")) {
+            Write-Error "pubspec.lock was not generated."
+            exit 1
+          }
+
+          Write-Host "Dependencies resolved successfully."
+
+      # 11. Analyze
+      - name: Flutter Analyze
+        shell: pwsh
+        run: |
+          flutter analyze --no-fatal-infos
+
+      # 12. Tests
+      - name: Flutter Test
+        shell: pwsh
+        run: |
+          if (Test-Path "test") {
+            flutter test
+          } else {
+            Write-Host "No test directory found; skipping tests."
+          }
+
+      # 13. Build
+      - name: Build Windows Release
+        run: flutter build windows --release
+
+      # 14. Verify EXE
+      - name: Verify Windows Build
+        shell: pwsh
+        run: |
+          $releasePath = "build\windows\x64\runner\Release"
+
+          if (!(Test-Path $releasePath)) {
+            Write-Error "Windows Release directory was not created."
+            exit 1
+          }
+
+          $exeFiles = @(
+            Get-ChildItem `
+              -Path $releasePath `
+              -Filter "*.exe" `
+              -Recurse
+          )
+
+          if ($exeFiles.Count -eq 0) {
+            Write-Error "No Windows EXE was found."
+            exit 1
+          }
+
+          Write-Host ""
+          Write-Host "=============================================="
+          Write-Host "Windows EXE successfully created!"
+          Write-Host "=============================================="
+
+          $exeFiles | ForEach-Object {
+            Write-Host "EXE: $($_.FullName)"
+          }
+
+      # 15. Package complete application
+      - name: Package Windows Application
+        shell: pwsh
+        run: |
+          $releasePath = "build\windows\x64\runner\Release"
+          $zipPath = "Moon_Cosmetics_POS_Windows_Release.zip"
+
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+
+          Compress-Archive `
+            -Path "$releasePath\*" `
+            -DestinationPath $zipPath `
+            -CompressionLevel Optimal
+
+          if (!(Test-Path $zipPath)) {
+            Write-Error "ZIP package was not created."
+            exit 1
+          }
+
+          Write-Host "Package created successfully:"
+          Write-Host $zipPath
+
+      # 16. Upload Artifact
+      - name: Upload Windows EXE Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moon_Cosmetics_POS_Windows
+          path: Moon_Cosmetics_POS_Windows_Release.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      # 17. Summary
+      - name: Build Summary
+        shell: pwsh
+        run: |
+          Write-Host ""
+          Write-Host "=============================================="
+          Write-Host " MOON COSMETICS & BEAUTY SHOP"
+          Write-Host " Windows POS Build Completed Successfully"
+          Write-Host "=============================================="
+          Write-Host ""
+          Write-Host "Artifact:"
+          Write-Host "Moon_Cosmetics_POS_Windows"
+          Write-Host ""
+          Write-Host "Package:"
+          Write-Host "Moon_Cosmetics_POS_Windows_Release.zip"
