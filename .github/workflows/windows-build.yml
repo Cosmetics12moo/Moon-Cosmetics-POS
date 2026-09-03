@@ -54,16 +54,22 @@ jobs:
       # --------------------------------------------------
       # 5. Ensure Windows platform files exist
       # --------------------------------------------------
-      - name: Check Windows Platform
-        shell: pwsh
-        run: |
-          if (!(Test-Path "windows")) {
-            Write-Host "Windows platform files not found."
-            Write-Host "Generating Windows platform files..."
-            flutter create --platforms=windows .
-          } else {
-            Write-Host "Windows platform files found."
-          }
+       -name: Check Windows Platform
+  shell: pwsh
+  run: |
+    if (!(Test-Path "windows")) {
+      Write-Host "Windows platform files not found."
+      Write-Host "Generating Windows platform files..."
+
+      flutter create `
+        --platforms=windows `
+        --project-name moon_cosmetics_pos `
+        .
+
+      Write-Host "Windows platform files generated successfully."
+    } else {
+      Write-Host "Windows platform files found."
+    }
 
       # --------------------------------------------------
       # 6. Get dependencies
