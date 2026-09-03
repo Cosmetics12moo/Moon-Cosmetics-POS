@@ -1,0 +1,2 @@
+import 'package:flutter/material.dart';
+class ProductsScreen extends StatelessWidget { const ProductsScreen({super.key}); @override Widget build(BuildContext c)=>Scaffold(body:ListView(padding:const EdgeInsets.all(16),children:const[Card(child:ListTile(title:Text('Cosmetics Products'),subtitle:Text('Name • Brand • Category • Shade • Barcode • Purchase • Retail • Wholesale • Stock • Expiry')))]),floatingActionButton:FloatingActionButton.extended(onPressed:null,icon:const Icon(Icons.add),label:const Text('Add Product'))); }
