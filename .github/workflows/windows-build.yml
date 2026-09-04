@@ -1,0 +1,116 @@
+name: Moon Cosmetics POS - Windows EXE Build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Moon Cosmetics POS for Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Extract source zip if present (safety net)
+        shell: pwsh
+        run: |
+          if (!(Test-Path "lib")) {
+            $zipFiles = Get-ChildItem -Filter "*.zip" -File
+            if ($zipFiles.Count -gt 0) {
+              foreach ($z in $zipFiles) {
+                Write-Host "lib/ not found. Extracting $($z.Name)..."
+                Expand-Archive -Path $z.FullName -DestinationPath "." -Force
+              }
+              Write-Host "Extraction complete."
+            } else {
+              Write-Host "lib/ not found and no zip file present."
+            }
+          } else {
+            Write-Host "lib/ already present, no extraction needed."
+          }
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter Version
+        run: flutter --version
+
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Verify Project Structure
+        shell: pwsh
+        run: |
+          $required = @(
+            "pubspec.yaml","lib\main.dart","lib\app.dart",
+            "lib\core\db.dart","lib\core\config.dart",
+            "lib\models\product.dart","lib\models\category.dart","lib\models\purchase.dart",
+            "lib\repositories\product_repository.dart","lib\repositories\category_repository.dart","lib\repositories\purchase_repository.dart",
+            "lib\services\invoice_service.dart",
+            "lib\screens\dashboard.dart","lib\screens\pos.dart","lib\screens\products.dart",
+            "lib\screens\categories.dart","lib\screens\purchases.dart","lib\screens\reports.dart","lib\screens\settings.dart"
+          )
+          $missing = @()
+          foreach ($file in $required) { if (!(Test-Path $file)) { $missing += $file } }
+          if ($missing.Count -gt 0) {
+            $missing | ForEach-Object { Write-Host " - $_" }
+            Write-Error "Project structure is incomplete."
+            exit 1
+          }
+          Write-Host "Project structure verified successfully."
+
+      - name: Prepare Windows Platform
+        shell: pwsh
+        run: |
+          if (!(Test-Path "windows\CMakeLists.txt")) {
+            flutter create --platforms=windows --project-name moon_cosmetics_pos .
+          }
+
+      - name: Flutter Pub Get
+        run: flutter pub get
+
+      - name: Flutter Analyze
+        run: flutter analyze
+
+      - name: Flutter Test
+        run: flutter test
+
+      - name: Build Windows Release
+        run: flutter build windows --release
+
+      - name: Verify Windows EXE
+        shell: pwsh
+        run: |
+          $releasePath = "build\windows\x64\runner\Release"
+          if (!(Test-Path $releasePath)) { Write-Error "Release folder missing."; exit 1 }
+          $exeFiles = Get-ChildItem -Path $releasePath -Filter "*.exe" -Recurse
+          if ($exeFiles.Count -eq 0) { Write-Error "No EXE found."; exit 1 }
+          $exeFiles | ForEach-Object { Write-Host $_.FullName }
+
+      - name: Package Windows Application
+        shell: pwsh
+        run: |
+          $releasePath = "build\windows\x64\runner\Release"
+          $zipPath = "Moon_Cosmetics_POS_Windows_Release.zip"
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path "$releasePath\*" -DestinationPath $zipPath -CompressionLevel Optimal
+
+      - name: Upload Windows EXE Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Moon_Cosmetics_POS_Windows
+          path: Moon_Cosmetics_POS_Windows_Release.zip
+          if-no-files-found: error
+          retention-days: 30
